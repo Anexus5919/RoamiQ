@@ -1,12 +1,40 @@
 // /app/api/itinerary/route.js
-import { NextResponse } from 'next/server';
+import { Ollama } from 'ollama';
+
+// This tells Next.js to use the "edge" runtime, which is optimal for streaming.
+
+
+// Initialize the Ollama client
+// It defaults to http://127.0.0.1:11434, which is correct for you.
+const ollama = new Ollama();
+
+// This helper function converts Ollama's stream (an AsyncGenerator)
+// into a standard ReadableStream that the browser can understand.
+function ollamaStreamToReadableStream(stream) {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        // The stream from ollama.chat() gives us objects
+        // We need to pull the text content out of each chunk
+        for await (const chunk of stream) {
+          controller.enqueue(encoder.encode(chunk.message.content));
+        }
+      } catch (e) {
+        // Handle any errors that occur during streaming
+        controller.error(e);
+      } finally {
+        // Close the stream when done
+        controller.close();
+      }
+    },
+  });
+}
+
 
 export async function POST(request) {
   const { destination, dates, interests } = await request.json();
 
-  // --- This prompt is CRITICAL ---
-  // It forces the AI to return ONLY a JSON object
-  // It also includes the "Chain of Thought" bonus
   const prompt = `
     You are an expert travel itinerary planner. A user is planning a trip.
     Destination: ${destination}
@@ -15,9 +43,8 @@ export async function POST(request) {
 
     Generate a detailed, day-by-day travel itinerary.
 
-    You MUST respond with ONLY a valid JSON object. Do not include any text, 
+    Respond ONLY with a valid JSON object. Do not include any text, 
     markdown, or explanations before or after the JSON.
-
     The JSON object must have the following structure:
     {
       "destination": "${destination}",
@@ -35,42 +62,34 @@ export async function POST(request) {
         }
       ]
     }
-
-    Ensure the itinerary is tailored to the specified interests.
   `;
 
   try {
-    // Send the request to your local Ollama server
-    const ollamaResponse = await fetch('http://localhost:11434/api/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'llama3', // The model you pulled
-        messages: [{ role: 'user', content: prompt }],
-        format: 'json', // This is key to force JSON output
-        stream: false,
-      }),
+    // Generate the completion stream from Ollama
+    // We use the .chat() method with stream: true
+    const responseStream = await ollama.chat({
+      model: 'llama3',
+      messages: [{ role: 'user', content: prompt }],
+      stream: true, // This is key!
     });
 
-    if (!ollamaResponse.ok) {
-      throw new Error(`Ollama API error: ${ollamaResponse.statusText}`);
-    }
+    // Convert the Ollama-specific stream to a standard ReadableStream
+    const readableStream = ollamaStreamToReadableStream(responseStream);
 
-    const data = await ollamaResponse.json();
-
-    // The AI's response is a JSON *string* in the 'content' field.
-    // We need to parse it into a real JSON object.
-    const itineraryJson = JSON.parse(data.message.content);
-
-    return NextResponse.json(itineraryJson);
+    // Return a standard 'Response' object with the stream
+    // Your frontend will read this perfectly.
+    return new Response(readableStream, {
+      headers: {
+        // Set the content type to plain text as we are streaming raw JSON text
+        'Content-Type': 'text/plain; charset=utf-8', 
+      },
+    });
 
   } catch (error) {
-    console.error('Itinerary generation error:', error);
-    return NextResponse.json(
-      { error: 'Failed to generate itinerary. Is Ollama running?' },
-      { status: 500 }
+    console.error('Itinerary streaming error:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to generate itinerary stream. Is Ollama running?' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
 }

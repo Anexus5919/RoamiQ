@@ -9,8 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "ai": "^5.0.76",
     "mongoose": "^8.19.2",
     "next": "15.5.6",
+    "ollama": "^0.6.0",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
