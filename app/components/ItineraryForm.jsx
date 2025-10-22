@@ -1,52 +1,141 @@
 // /app/components/ItineraryForm.jsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 export default function ItineraryForm({ onSubmit, isLoading }) {
+  const searchParams = useSearchParams();
+  const prefilledDestination = searchParams.get('destination');
+
+  const [from, setFrom] = useState('');
   const [destination, setDestination] = useState('');
-  const [dates, setDates] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [budget, setBudget] = useState('Mid-range');
+  const [transportMode, setTransportMode] = useState('Flight');
   const [interests, setInterests] = useState('');
+
+  useEffect(() => {
+    if (prefilledDestination) {
+      setDestination(prefilledDestination);
+    }
+  }, [prefilledDestination]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     const interestsArray = interests.split(',').map(item => item.trim()).filter(item => item);
-    onSubmit({ destination, dates, interests: interestsArray });
+    onSubmit({ 
+      from, 
+      destination, 
+      startDate, 
+      endDate, 
+      budget, 
+      transportMode, 
+      interests: interestsArray 
+    });
   };
+
+  // --- FIX: Added 'text-gray-900' and 'placeholder-gray-400' ---
+  const inputClass = "mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 placeholder-gray-400";
 
   return (
     <form 
       onSubmit={handleSubmit}
-      className="bg-white p-6 rounded-lg shadow-md space-y-4"
+      className="bg-white p-6 rounded-lg shadow-md space-y-6"
     >
-      <div>
-        <label htmlFor="destination" className="block text-sm font-medium text-gray-700">
-          Destination
-        </label>
-        <input
-          type="text"
-          id="destination"
-          value={destination}
-          onChange={(e) => setDestination(e.target.value)}
-          placeholder="e.g., Paris, France"
-          required
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label htmlFor="from" className="block text-sm font-medium text-gray-700">
+            From
+          </label>
+          <input
+            type="text"
+            id="from"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            placeholder="e.g., New York, USA"
+            required
+            className={inputClass}
+          />
+        </div>
+        <div>
+          <label htmlFor="destination" className="block text-sm font-medium text-gray-700">
+            Destination
+          </label>
+          <input
+            type="text"
+            id="destination"
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            placeholder="e.g., Paris, France"
+            required
+            className={inputClass}
+          />
+        </div>
       </div>
 
-      <div>
-        <label htmlFor="dates" className="block text-sm font-medium text-gray-700">
-          Travel Dates
-        </label>
-        <input
-          type="text"
-          id="dates"
-          value={dates}
-          onChange={(e) => setDates(e.target.value)}
-          placeholder="e.g., July 10th - July 17th"
-          required
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">
+            Start Date
+          </label>
+          <input
+            type="date"
+            id="startDate"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            required
+            className={inputClass}
+          />
+        </div>
+        <div>
+          <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">
+            End Date
+          </label>
+          <input
+            type="date"
+            id="endDate"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            required
+            className={inputClass}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label htmlFor="budget" className="block text-sm font-medium text-gray-700">
+            Budget
+          </label>
+          <select
+            id="budget"
+            value={budget}
+            onChange={(e) => setBudget(e.target.value)}
+            className={inputClass}
+          >
+            <option>Budget</option>
+            <option>Mid-range</option>
+            <option>Luxury</option>
+          </select>
+        </div>
+        <div>
+          <label htmlFor="transportMode" className="block text-sm font-medium text-gray-700">
+            Main Transport
+          </label>
+          <select
+            id="transportMode"
+            value={transportMode}
+            onChange={(e) => setTransportMode(e.target.value)}
+            className={inputClass}
+          >
+            <option>Flight</option>
+            <option>Train</option>
+            <option>Car</option>
+            <option>Any</option>
+          </select>
+        </div>
       </div>
 
       <div>
@@ -60,7 +149,7 @@ export default function ItineraryForm({ onSubmit, isLoading }) {
           onChange={(e) => setInterests(e.target.value)}
           placeholder="e.g., food, history, art, hiking"
           required
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+          className={inputClass}
         />
       </div>
 

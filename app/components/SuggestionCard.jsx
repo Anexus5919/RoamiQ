@@ -1,22 +1,27 @@
 // /app/components/SuggestionCard.jsx
 
-// We need to tell Next.js to allow images from this domain
-// Add this to your `next.config.mjs`
-
 import Image from 'next/image';
+import Link from 'next/link'; // Import Link
 
 export default function SuggestionCard({ suggestion }) {
   const { destination, imageUrl, highlights, bestTimeToVisit } = suggestion;
 
   return (
-    <div className="bg-white rounded-lg shadow-lg overflow-hidden transition-transform duration-300 hover:scale-105">
+    // Wrap the entire card in a Link component
+    <Link 
+      href={{
+        pathname: '/', // Link to the Itinerary Builder (homepage)
+        query: { destination: destination } // Pass the destination as a query param
+      }}
+      className="bg-white rounded-lg shadow-lg overflow-hidden transition-transform duration-300 hover:scale-105 block"
+    >
       <div className="relative h-48 w-full">
         <Image
           src={imageUrl}
           alt={`View of ${destination}`}
           layout="fill"
           objectFit="cover"
-          unoptimized={true} // Use this if your images are external and not configured
+          unoptimized={true} 
         />
       </div>
       <div className="p-4">
@@ -32,7 +37,13 @@ export default function SuggestionCard({ suggestion }) {
             ))}
           </ul>
         </div>
+        {/* Add a "View Plan" button for clear call-to-action */}
+        <div className="text-center mt-4">
+          <span className="inline-block w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+            View Plan
+          </span>
+        </div>
       </div>
-    </div>
+    </Link>
   );
 }

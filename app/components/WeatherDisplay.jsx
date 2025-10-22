@@ -14,7 +14,13 @@ export default function WeatherDisplay({ city }) {
     setLoading(true);
     setError(null);
 
-    fetch(`/api/weather?city=${encodeURIComponent(city)}`)
+    // --- THIS IS THE FIX ---
+    // We split "Kyoto, Japan" and just take "Kyoto".
+    // This makes the API call much more reliable.
+    const cleanCity = city.split(',')[0].trim();
+    // -----------------------
+
+    fetch(`/api/weather?city=${encodeURIComponent(cleanCity)}`)
       .then((res) => {
         if (!res.ok) {
           throw new Error('Weather data not found.');
@@ -29,14 +35,14 @@ export default function WeatherDisplay({ city }) {
         setError(err.message);
         setLoading(false);
       });
-  }, [city]);
+  }, [city]); // This effect re-runs whenever the 'city' prop changes
 
   if (loading) {
     return <div className="p-4 bg-white rounded-lg shadow-md text-sm text-gray-600">Loading weather...</div>;
   }
 
   if (error) {
-    return <div className="p-4 bg-red-100 rounded-lg shadow-md text-sm text-red-700">Could not load weather.</div>;
+    return <div className="p-4 bg-red-100 rounded-lg shadow-md text-sm text-red-700">Could not load weather for {city}.</div>;
   }
 
   if (!weather) return null;

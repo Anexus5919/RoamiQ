@@ -1,88 +1,336 @@
 // /app/api/itinerary/route.js
 import { Ollama } from 'ollama';
+import { getJson } from 'serpapi';
 
-// This tells Next.js to use the "edge" runtime, which is optimal for streaming.
-
-
-// Initialize the Ollama client
-// It defaults to http://127.0.0.1:11434, which is correct for you.
+// --- Initialize our clients ---
 const ollama = new Ollama();
+const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY;
+const SERPAPI_API_KEY = process.env.SERPAPI_API_KEY;
 
-// This helper function converts Ollama's stream (an AsyncGenerator)
-// into a standard ReadableStream that the browser can understand.
+// --- Helper: Convert Ollama stream to ReadableStream ---
 function ollamaStreamToReadableStream(stream) {
   const encoder = new TextEncoder();
   return new ReadableStream({
     async start(controller) {
       try {
-        // The stream from ollama.chat() gives us objects
-        // We need to pull the text content out of each chunk
         for await (const chunk of stream) {
-          controller.enqueue(encoder.encode(chunk.message.content));
+          if (chunk.message && chunk.message.content) {
+            controller.enqueue(encoder.encode(chunk.message.content));
+          }
         }
       } catch (e) {
-        // Handle any errors that occur during streaming
         controller.error(e);
       } finally {
-        // Close the stream when done
         controller.close();
       }
     },
   });
 }
 
+// --- Helper: Format seconds to hours/minutes ---
+function formatTravelTime(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return `${hours} hours ${minutes} mins`;
+}
 
+// --- Helper: Get coordinates from TomTom ---
+async function getCoords(location) {
+  if (!TOMTOM_API_KEY) throw new Error('TomTom API key is missing');
+  
+  const url = `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(location)}.json?key=${TOMTOM_API_KEY}&limit=1`;
+  
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to geocode location');
+    
+    const data = await response.json();
+    if (!data.results || data.results.length === 0) throw new Error(`Location not found: ${location}`);
+    
+    return data.results[0].position; // Returns { lat, lon }
+  } catch (error) {
+    console.error('TomTom Geocode Error:', error.message);
+    throw error;
+  }
+}
+
+// /app/api/itinerary/route.js
+// ... (keep all other helper functions and imports) ...
+
+// --- REWRITTEN Helper: Fetch REAL travel data ---
+async function getTravelData(from, destination) {
+  const options = [];
+  let overallDistance = "N/A";
+
+  // 1. Get TomTom route data (Car & Bus)
+  try {
+    const [fromCoords, destCoords] = await Promise.all([
+      getCoords(from),
+      getCoords(destination)
+    ]);
+
+    const coordsString = `${fromCoords.lat},${fromCoords.lon}:${destCoords.lat},${destCoords.lon}`;
+    
+    const carUrl = `https://api.tomtom.com/routing/1/calculateRoute/${coordsString}/json?key=${TOMTOM_API_KEY}&travelMode=car`;
+    const busUrl = `https://api.tomtom.com/routing/1/calculateRoute/${coordsString}/json?key=${TOMTOM_API_KEY}&travelMode=bus`;
+
+    const [carResponse, busResponse] = await Promise.allSettled([
+      fetch(carUrl),
+      fetch(busUrl)
+    ]);
+
+    if (carResponse.status === 'fulfilled' && carResponse.value.ok) {
+      const data = await carResponse.value.json();
+      if (data.routes && data.routes.length > 0) {
+        const route = data.routes[0].summary;
+        const distanceKm = `${(route.lengthInMeters / 1000).toFixed(0)} km`;
+        options.push({
+          mode: 'Car',
+          time: formatTravelTime(route.travelTimeInSeconds),
+          distance: distanceKm,
+        });
+        overallDistance = distanceKm;
+      }
+    }
+    
+    if (busResponse.status === 'fulfilled' && busResponse.value.ok) {
+      const data = await busResponse.value.json();
+      if (data.routes && data.routes.length > 0) {
+        const route = data.routes[0].summary;
+        const distanceKm = `${(route.lengthInMeters / 1000).toFixed(0)} km`;
+        options.push({
+          mode: 'Bus/Train (Public)',
+          time: formatTravelTime(route.travelTimeInSeconds),
+          distance: distanceKm,
+        });
+        if (overallDistance === "N/A") overallDistance = distanceKm;
+      }
+    }
+
+  } catch (error) {
+    console.error("TomTom Routing Error:", error.message);
+  }
+
+  // 2. Get Flight and Distance (via SerpApi)
+  try {
+    if (!SERPAPI_API_KEY) throw new Error('SerpApi key is missing');
+    
+    const flightQuery = `flight time from ${from} to ${destination}`;
+    const distanceQuery = `distance from ${from} to ${destination}`;
+
+    const [flightSearch, distanceSearch] = await Promise.all([
+      getJson({ api_key: SERPAPI_API_KEY, q: flightQuery, gl: 'us', hl: 'en' }),
+      getJson({ api_key: SERPAPI_API_KEY, q: distanceQuery, gl: 'us', hl: 'en' })
+    ]);
+    
+    // Add flight info
+    if (flightSearch.answer_box && flightSearch.answer_box.duration) {
+       options.push({ mode: 'Flight', time: flightSearch.answer_box.duration });
+    } else if (flightSearch.answer_box && flightSearch.answer_box.snippet) {
+       options.push({ mode: 'Flight', time: flightSearch.answer_box.snippet });
+    }
+
+    // --- THIS IS THE FIX ---
+    // If we still don't have a distance (from car/bus), get it from the distance search
+    if (overallDistance === "N/A" && distanceSearch.answer_box && distanceSearch.answer_box.answer) {
+      overallDistance = distanceSearch.answer_box.answer;
+    }
+    // -----------------------
+
+  } catch (error) {
+    console.error("SerpApi Flight/Distance Error:", error.message);
+  }
+
+  return { options, distance: overallDistance };
+}
+
+// /app/api/itinerary/route.js
+// ... (keep all your other functions: ollamaStreamToReadableStream, getTravelData, etc.) ...
+
+// --- REWRITTEN Helper: Fetch REAL destination info ---
+async function getDestinationInfo(destination, budget) {
+  try {
+    if (!SERPAPI_API_KEY) throw new Error('SerpApi key is missing');
+
+    // --- THIS IS THE FIX ---
+    // We create a specific search term based on the user's budget.
+    let budgetSearchTerm = "";
+    if (budget.toLowerCase() === 'luxury') {
+      budgetSearchTerm = "luxury 5 star hotels";
+    } else if (budget.toLowerCase() === 'mid-range') {
+      budgetSearchTerm = "best 3 star and 4 star hotels"; // Exactly what you asked for
+    } else { // Default to 'Budget'
+      budgetSearchTerm = "low cost 3 star hotels"; // Exactly what you asked for
+    }
+    
+    const attractionsQuery = `top attractions in ${destination}`;
+    const hotelsQuery = `${budgetSearchTerm} in ${destination}`; // Use the new, smarter query
+    const bestTimeQuery = `when is the best time to visit ${destination}`;
+
+    const [attractionsSearch, hotelsSearch, bestTimeSearch] = await Promise.all([
+      getJson({ api_key: SERPAPI_API_KEY, q: attractionsQuery, gl: 'us', hl: 'en' }),
+      
+      getJson({ 
+        api_key: SERPAPI_API_KEY, 
+        q: hotelsQuery, 
+        gl: 'us', 
+        hl: 'en', 
+        num: 6, 
+        tbm: 'lcl' // 'tbm=lcl' is for "Local" results
+      }),
+      
+      getJson({ api_key: SERPAPI_API_KEY, q: bestTimeQuery, gl: 'us', hl: 'en' }),
+    ]);
+
+    const highlights = attractionsSearch.knowledge_graph?.tourist_attractions?.map(a => a.name) 
+      || attractionsSearch.top_sights?.sights?.map(s => s.title)
+      || [];
+    
+    let hotels = [];
+    if (hotelsSearch.local_results) {
+       hotels = hotelsSearch.local_results.slice(0, 6).map(h => ({
+        name: h.title,
+        address: h.address,
+        photo: h.thumbnail,
+        rating: h.rating,
+        link: h.website || h.link, // Prioritize website link
+      }));
+    }
+    
+    const bestTime = bestTimeSearch.answer_box?.snippet 
+      || bestTimeSearch.answer_box?.answer
+      || (bestTimeSearch.organic_results && bestTimeSearch.organic_results[0].snippet) 
+      || "Varies by season.";
+
+    return { highlights, hotels, bestTime };
+  } catch (error) {
+    console.error('SerpApi Error:', error);
+    return { highlights: [], hotels: [], bestTime: "N/A" };
+  }
+}
+
+// ... (keep your main POST function and the AI prompt exactly as they are) ...
+
+
+// --- THE MAIN API ROUTE ---
 export async function POST(request) {
-  const { destination, dates, interests } = await request.json();
+  const { 
+    from, 
+    destination, 
+    startDate, 
+    endDate, 
+    budget, 
+    transportMode, 
+    interests 
+  } = await request.json();
 
+  if (destination.toLowerCase().includes('antarctica')) {
+    return new Response(
+      JSON.stringify({ error: 'Travel to Antarctica requires a specialized expedition and cannot be planned this way.' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  let travelData, destinationInfo;
+  try {
+    [travelData, destinationInfo] = await Promise.all([
+      getTravelData(from, destination),
+      getDestinationInfo(destination, budget)
+    ]);
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: `Failed to fetch API data: ${error.message}` }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // --- UPDATED PROMPT (Passing new data structures) ---
   const prompt = `
-    You are an expert travel itinerary planner. A user is planning a trip.
-    Destination: ${destination}
-    Travel Dates: ${dates}
-    Interests: ${interests.join(', ')}
+    You are an expert travel planner. You MUST use the provided REAL-WORLD DATA to create a 
+    detailed, practical, and inspiring itinerary. Do not invent information.
 
-    Generate a detailed, day-by-day travel itinerary.
+    ---
+    USER PREFERENCES:
+    - From: ${from}
+    - Destination: ${destination}
+    - Dates: ${startDate} to ${endDate}
+    - Budget: ${budget}
+    - Preferred Transport: ${transportMode}
+    - Interests: ${interests.join(', ')}
 
-    Respond ONLY with a valid JSON object. Do not include any text, 
-    markdown, or explanations before or after the JSON.
-    The JSON object must have the following structure:
+    ---
+    REAL-WORLD DATA:
+    1.  Travel Options (from TomTom & Search):
+        - Distance: ${travelData.distance}
+        - Options: ${JSON.stringify(travelData.options)}
+    2.  Destination Info (from Google Search):
+        - Top Highlights: ${destinationInfo.highlights.join(', ') || 'N/A'}
+        - Best Time to Visit: ${destinationInfo.bestTime}
+        - Suggested ${budget} Hotels: ${JSON.stringify(destinationInfo.hotels)}
+
+    ---
+    YOUR TASK:
+    1.  Create a "travelAnalysis" block. Use the "Travel Options" data directly.
+    2.  Create a "destinationSummary" block. Pass the "bestTimeToVisit" and "hotelSuggestions" data through directly.
+    3.  Create a "thoughtProcess" block.
+    4.  Create a complete day-by-day "days" array, from ${startDate} to ${endDate}.
+    5.  For each day, include all 3 parts: "Morning", "Afternoon", and "Evening".
+    6.  For each activity, add a 1-2 sentence "description" explaining what it is or 
+        why it fits the user's interests.
+    7.  Weave the "Top Highlights" into your plan.
+
+    ---
+    JSON-ONLY RESPONSE:
+    Respond ONLY with a valid JSON object. Do not include any text before or after it.
     {
-      "destination": "${destination}",
-      "thoughtProcess": "A brief (1-2 sentences) chain of thought on how you 
-                       built this itinerary based on the user's interests.",
+      "destinationName": "${destination}",
+      "travelAnalysis": {
+        "summary": "Based on real data, here are the travel options from ${from} to ${destination}:",
+        "distance": "${travelData.distance}",
+        "options": ${JSON.stringify(travelData.options)}
+      },
+      "destinationSummary": {
+        "bestTimeToVisit": "${destinationInfo.bestTime}",
+        "hotelSuggestions": ${JSON.stringify(destinationInfo.hotels)}
+      },
+      "thoughtProcess": "I've used the real travel times and top sights to build a logical plan...",
       "days": [
         {
           "day": 1,
-          "title": "Arrival and Local Exploration",
+          "date": "${startDate}",
+          "title": "Travel and Arrival",
           "activities": [
-            { "time": "Morning", "description": "Arrive at [Airport/Station], transfer to hotel, and check-in." },
-            { "time": "Afternoon", "description": "Light lunch at a local cafe and a brief walk around the hotel area." },
-            { "time": "Evening", "description": "Welcome dinner at a restaurant featuring local cuisine." }
+            { "time": "Morning", "description": "Travel from ${from} to ${destination} via [Logical Mode from data]." },
+            { "time": "Afternoon", "description": "Arrive and transfer to your hotel. We suggest checking into ${destinationInfo.hotels.length > 0 ? destinationInfo.hotels[0].name : `a ${budget} hotel`}." },
+            { "time": "Evening", "description": "Settle in and have a relaxing ${budget} dinner at a nearby restaurant." }
+          ]
+        },
+        {
+          "day": 2,
+          "date": "[Date for Day 2]",
+          "title": "[Title based on interests, e.g., 'Historical Exploration']",
+          "activities": [
+            { "time": "Morning", "description": "Visit [Top Highlight 1]. This is famous for..." },
+            { "time": "Afternoon", "description": "Explore [Top Highlight 2]. This fits your interest in [Interest]." },
+            { "time": "Evening", "description": "Experience [Local activity, e.g., a local market]." }
           ]
         }
+        // ... (etc. for all days)
       ]
     }
   `;
 
   try {
-    // Generate the completion stream from Ollama
-    // We use the .chat() method with stream: true
     const responseStream = await ollama.chat({
       model: 'llama3',
       messages: [{ role: 'user', content: prompt }],
-      stream: true, // This is key!
+      stream: true, 
     });
 
-    // Convert the Ollama-specific stream to a standard ReadableStream
     const readableStream = ollamaStreamToReadableStream(responseStream);
 
-    // Return a standard 'Response' object with the stream
-    // Your frontend will read this perfectly.
     return new Response(readableStream, {
-      headers: {
-        // Set the content type to plain text as we are streaming raw JSON text
-        'Content-Type': 'text/plain; charset=utf-8', 
-      },
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     });
 
   } catch (error) {
