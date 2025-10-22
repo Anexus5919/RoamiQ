@@ -1,26 +1,41 @@
-@import "tailwindcss";
+/* /app/globals.css */
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* These MUST be first */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Default light theme - targets body directly */
+body {
+  @apply bg-gray-100 text-gray-900 transition-colors duration-100;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* --- THIS IS THE FIX --- */
+/* Target the body *when* the html tag has the dark class */
+html.dark body {
+  @apply bg-gray-900 text-gray-100 duration-100;
 }
+/* ----------------------- */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Form input fixes */
+input, select {
+  @apply text-gray-900 placeholder-gray-400;
+  /* Apply dark styles when html has dark class */
+  html.dark & { 
+    @apply bg-gray-800 border-gray-600 text-gray-100;
+  }
+}
+::placeholder {
+  @apply text-gray-400;
+  html.dark & {
+     @apply text-gray-500;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Date picker icon fix */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0);
+}
+html.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
 }

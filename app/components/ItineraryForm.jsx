@@ -1,13 +1,13 @@
 // /app/components/ItineraryForm.jsx
 'use client';
-
+// ... (keep all the imports and logic from before) ...
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 export default function ItineraryForm({ onSubmit, isLoading }) {
+  // ... (keep all the state and handlers) ...
   const searchParams = useSearchParams();
   const prefilledDestination = searchParams.get('destination');
-
   const [from, setFrom] = useState('');
   const [destination, setDestination] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -36,17 +36,19 @@ export default function ItineraryForm({ onSubmit, isLoading }) {
     });
   };
 
-  // --- FIX: Added 'text-gray-900' and 'placeholder-gray-400' ---
-  const inputClass = "mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 placeholder-gray-400";
+  // --- ADDED DARK MODE STYLES to inputClass ---
+  const inputClass = "mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 placeholder-gray-400 dark:bg-gray-800 dark:text-gray-100";
 
   return (
+    // --- ADDED DARK MODE STYLES to form ---
     <form 
       onSubmit={handleSubmit}
-      className="bg-white p-6 rounded-lg shadow-md space-y-6"
+      className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md space-y-6"
     >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label htmlFor="from" className="block text-sm font-medium text-gray-700">
+          {/* --- ADDED DARK MODE STYLES to label --- */}
+          <label htmlFor="from" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             From
           </label>
           <input
@@ -60,7 +62,7 @@ export default function ItineraryForm({ onSubmit, isLoading }) {
           />
         </div>
         <div>
-          <label htmlFor="destination" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="destination" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Destination
           </label>
           <input
@@ -77,7 +79,7 @@ export default function ItineraryForm({ onSubmit, isLoading }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Start Date
           </label>
           <input
@@ -90,7 +92,7 @@ export default function ItineraryForm({ onSubmit, isLoading }) {
           />
         </div>
         <div>
-          <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             End Date
           </label>
           <input
@@ -106,7 +108,7 @@ export default function ItineraryForm({ onSubmit, isLoading }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label htmlFor="budget" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="budget" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Budget
           </label>
           <select
@@ -121,7 +123,7 @@ export default function ItineraryForm({ onSubmit, isLoading }) {
           </select>
         </div>
         <div>
-          <label htmlFor="transportMode" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="transportMode" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Main Transport
           </label>
           <select
@@ -139,7 +141,7 @@ export default function ItineraryForm({ onSubmit, isLoading }) {
       </div>
 
       <div>
-        <label htmlFor="interests" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="interests" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
           Interests (comma-separated)
         </label>
         <input
@@ -153,6 +155,7 @@ export default function ItineraryForm({ onSubmit, isLoading }) {
         />
       </div>
 
+      {/* Button styles are fine as-is */}
       <button
         type="submit"
         disabled={isLoading}

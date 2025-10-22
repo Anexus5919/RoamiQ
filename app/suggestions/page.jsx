@@ -3,11 +3,11 @@ import dbConnect from '@/lib/dbConnect';
 import Suggestion from '@/models/Suggestion';
 import SuggestionCard from '../components/SuggestionCard';
 
-// This function runs on the server to get the data
+// Fetch data on the server
 async function getSuggestions() {
   await dbConnect();
   const suggestions = await Suggestion.find({});
-  // We must serialize the data for the client component
+  // Serialize data for the client component (SuggestionCard uses Link, needs serialization)
   return JSON.parse(JSON.stringify(suggestions));
 }
 
@@ -16,11 +16,15 @@ export default async function SuggestionsPage() {
 
   return (
     <div>
-      <h1 className="text-4xl font-bold text-center text-gray-900 mb-8">
+      {/* --- THIS IS THE FIX --- */}
+      {/* Added dark:text-indigo-400 for dark mode visibility */}
+      <h1 className="text-4xl md:text-5xl font-extrabold text-center text-indigo-700 dark:text-indigo-400 mb-8">
         Trip Inspiration
       </h1>
+      {/* ----------------------- */}
+
       {suggestions.length === 0 ? (
-        <p className="text-center text-gray-600">
+        <p className="text-center text-gray-600 dark:text-gray-400">
           No suggestions found. Please add some to the database!
         </p>
       ) : (
@@ -33,3 +37,6 @@ export default async function SuggestionsPage() {
     </div>
   );
 }
+
+// Ensure dynamic fetching if deploying
+export const dynamic = 'force-dynamic';
