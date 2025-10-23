@@ -18,6 +18,7 @@
     "ollama": "^0.6.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-globe.gl": "^2.36.0",
     "serpapi": "^2.2.1",
     "tailwindcss": "^3.4.1"
   },

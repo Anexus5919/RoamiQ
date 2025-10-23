@@ -37,40 +37,38 @@ function formatTravelTime(seconds) {
 // --- Helper: Get coordinates from TomTom ---
 async function getCoords(location) {
   if (!TOMTOM_API_KEY) throw new Error('TomTom API key is missing');
-  
+
   const url = `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(location)}.json?key=${TOMTOM_API_KEY}&limit=1`;
-  
+
   try {
     const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to geocode location');
-    
+    if (!response.ok) throw new Error(`Failed to geocode location: ${location}`); // Be more specific on error
+
     const data = await response.json();
     if (!data.results || data.results.length === 0) throw new Error(`Location not found: ${location}`);
-    
+
     return data.results[0].position; // Returns { lat, lon }
   } catch (error) {
     console.error('TomTom Geocode Error:', error.message);
-    throw error;
+    throw error; // Re-throw the error to be caught by the main POST function
   }
 }
 
-// /app/api/itinerary/route.js
-// ... (keep all other helper functions and imports) ...
-
-// --- REWRITTEN Helper: Fetch REAL travel data ---
+// --- Helper: Fetch REAL travel data ---
 async function getTravelData(from, destination) {
   const options = [];
   let overallDistance = "N/A";
 
   // 1. Get TomTom route data (Car & Bus)
   try {
+    // Note: Coordinates are fetched separately in the main POST function now
+    // We assume getCoords has already run successfully if we reach here
     const [fromCoords, destCoords] = await Promise.all([
-      getCoords(from),
-      getCoords(destination)
-    ]);
-
+        getCoords(from),
+        getCoords(destination)
+    ]); // Re-fetch coords here just for routing, handle potential errors
     const coordsString = `${fromCoords.lat},${fromCoords.lon}:${destCoords.lat},${destCoords.lon}`;
-    
+
     const carUrl = `https://api.tomtom.com/routing/1/calculateRoute/${coordsString}/json?key=${TOMTOM_API_KEY}&travelMode=car`;
     const busUrl = `https://api.tomtom.com/routing/1/calculateRoute/${coordsString}/json?key=${TOMTOM_API_KEY}&travelMode=bus`;
 
@@ -92,7 +90,7 @@ async function getTravelData(from, destination) {
         overallDistance = distanceKm;
       }
     }
-    
+
     if (busResponse.status === 'fulfilled' && busResponse.value.ok) {
       const data = await busResponse.value.json();
       if (data.routes && data.routes.length > 0) {
@@ -108,13 +106,14 @@ async function getTravelData(from, destination) {
     }
 
   } catch (error) {
-    console.error("TomTom Routing Error:", error.message);
+    // Log routing errors but continue
+    console.error("TomTom Routing Error within getTravelData:", error.message);
   }
 
   // 2. Get Flight and Distance (via SerpApi)
   try {
     if (!SERPAPI_API_KEY) throw new Error('SerpApi key is missing');
-    
+
     const flightQuery = `flight time from ${from} to ${destination}`;
     const distanceQuery = `distance from ${from} to ${destination}`;
 
@@ -122,20 +121,16 @@ async function getTravelData(from, destination) {
       getJson({ api_key: SERPAPI_API_KEY, q: flightQuery, gl: 'us', hl: 'en' }),
       getJson({ api_key: SERPAPI_API_KEY, q: distanceQuery, gl: 'us', hl: 'en' })
     ]);
-    
-    // Add flight info
-    if (flightSearch.answer_box && flightSearch.answer_box.duration) {
+
+    if (flightSearch.answer_box?.duration) {
        options.push({ mode: 'Flight', time: flightSearch.answer_box.duration });
-    } else if (flightSearch.answer_box && flightSearch.answer_box.snippet) {
+    } else if (flightSearch.answer_box?.snippet) {
        options.push({ mode: 'Flight', time: flightSearch.answer_box.snippet });
     }
 
-    // --- THIS IS THE FIX ---
-    // If we still don't have a distance (from car/bus), get it from the distance search
-    if (overallDistance === "N/A" && distanceSearch.answer_box && distanceSearch.answer_box.answer) {
+    if (overallDistance === "N/A" && distanceSearch.answer_box?.answer) {
       overallDistance = distanceSearch.answer_box.answer;
     }
-    // -----------------------
 
   } catch (error) {
     console.error("SerpApi Flight/Distance Error:", error.message);
@@ -144,48 +139,30 @@ async function getTravelData(from, destination) {
   return { options, distance: overallDistance };
 }
 
-// /app/api/itinerary/route.js
-// ... (keep all your other functions: ollamaStreamToReadableStream, getTravelData, etc.) ...
-
-// --- REWRITTEN Helper: Fetch REAL destination info ---
+// --- Helper: Fetch REAL destination info ---
 async function getDestinationInfo(destination, budget) {
   try {
     if (!SERPAPI_API_KEY) throw new Error('SerpApi key is missing');
 
-    // --- THIS IS THE FIX ---
-    // We create a specific search term based on the user's budget.
     let budgetSearchTerm = "";
-    if (budget.toLowerCase() === 'luxury') {
-      budgetSearchTerm = "luxury 5 star hotels";
-    } else if (budget.toLowerCase() === 'mid-range') {
-      budgetSearchTerm = "best 3 star and 4 star hotels"; // Exactly what you asked for
-    } else { // Default to 'Budget'
-      budgetSearchTerm = "low cost 3 star hotels"; // Exactly what you asked for
-    }
-    
+    if (budget.toLowerCase() === 'luxury') { budgetSearchTerm = "luxury 5 star hotels"; }
+    else if (budget.toLowerCase() === 'mid-range') { budgetSearchTerm = "best 3 star and 4 star hotels"; }
+    else { budgetSearchTerm = "low cost 3 star hotels"; }
+
     const attractionsQuery = `top attractions in ${destination}`;
-    const hotelsQuery = `${budgetSearchTerm} in ${destination}`; // Use the new, smarter query
+    const hotelsQuery = `${budgetSearchTerm} in ${destination}`;
     const bestTimeQuery = `when is the best time to visit ${destination}`;
 
     const [attractionsSearch, hotelsSearch, bestTimeSearch] = await Promise.all([
       getJson({ api_key: SERPAPI_API_KEY, q: attractionsQuery, gl: 'us', hl: 'en' }),
-      
-      getJson({ 
-        api_key: SERPAPI_API_KEY, 
-        q: hotelsQuery, 
-        gl: 'us', 
-        hl: 'en', 
-        num: 6, 
-        tbm: 'lcl' // 'tbm=lcl' is for "Local" results
-      }),
-      
+      getJson({ api_key: SERPAPI_API_KEY, q: hotelsQuery, gl: 'us', hl: 'en', num: 6, tbm: 'lcl' }),
       getJson({ api_key: SERPAPI_API_KEY, q: bestTimeQuery, gl: 'us', hl: 'en' }),
     ]);
 
-    const highlights = attractionsSearch.knowledge_graph?.tourist_attractions?.map(a => a.name) 
+    const highlights = attractionsSearch.knowledge_graph?.tourist_attractions?.map(a => a.name)
       || attractionsSearch.top_sights?.sights?.map(s => s.title)
       || [];
-    
+
     let hotels = [];
     if (hotelsSearch.local_results) {
        hotels = hotelsSearch.local_results.slice(0, 6).map(h => ({
@@ -193,64 +170,70 @@ async function getDestinationInfo(destination, budget) {
         address: h.address,
         photo: h.thumbnail,
         rating: h.rating,
-        link: h.website || h.link, // Prioritize website link
+        link: h.website || h.link,
       }));
     }
-    
-    const bestTime = bestTimeSearch.answer_box?.snippet 
+
+    const bestTime = bestTimeSearch.answer_box?.snippet
       || bestTimeSearch.answer_box?.answer
-      || (bestTimeSearch.organic_results && bestTimeSearch.organic_results[0].snippet) 
+      || (bestTimeSearch.organic_results && bestTimeSearch.organic_results[0].snippet)
       || "Varies by season.";
 
     return { highlights, hotels, bestTime };
   } catch (error) {
     console.error('SerpApi Error:', error);
-    return { highlights: [], hotels: [], bestTime: "N/A" };
+    // Return default values but maybe log the error was specifically here
+    return { highlights: [], hotels: [], bestTime: "N/A (Error fetching details)" };
   }
 }
-
-// ... (keep your main POST function and the AI prompt exactly as they are) ...
 
 
 // --- THE MAIN API ROUTE ---
 export async function POST(request) {
-  const { 
-    from, 
-    destination, 
-    startDate, 
-    endDate, 
-    budget, 
-    transportMode, 
-    interests 
+  const {
+    from,
+    destination,
+    startDate,
+    endDate,
+    budget,
+    transportMode,
+    interests
   } = await request.json();
 
+  // --- Antarctica Guard Rail ---
   if (destination.toLowerCase().includes('antarctica')) {
-    return new Response(
-      JSON.stringify({ error: 'Travel to Antarctica requires a specialized expedition and cannot be planned this way.' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
-    );
+    return new Response( /* ... Antarctica error JSON ... */ );
   }
 
-  let travelData, destinationInfo;
+  // --- Fetch Data in Parallel ---
+  let travelData, destinationInfo, fromCoords, destCoords; // <-- Define coord vars
   try {
-    [travelData, destinationInfo] = await Promise.all([
+    // --- ADDED COORDINATE FETCHING ---
+    [travelData, destinationInfo, fromCoords, destCoords] = await Promise.all([
       getTravelData(from, destination),
-      getDestinationInfo(destination, budget)
+      getDestinationInfo(destination, budget),
+      getCoords(from),       // <-- Fetch origin coordinates
+      getCoords(destination) // <-- Fetch destination coordinates
     ]);
+    // -----------------------------
   } catch (error) {
+    // --- Improved Error Handling ---
+    console.error("API Data Fetching Error in POST:", error);
+    const errorMessage = error.message.includes("Location not found")
+        ? `Could not find location: ${error.message.split(': ')[1]}`
+        : `Failed to fetch required API data: ${error.message}`;
     return new Response(
-      JSON.stringify({ error: `Failed to fetch API data: ${error.message}` }),
+      JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
+    // -----------------------------
   }
 
-  // --- UPDATED PROMPT (Passing new data structures) ---
+  // --- Build the Prompt for the AI ---
   const prompt = `
-    You are an expert travel planner. You MUST use the provided REAL-WORLD DATA to create a 
-    detailed, practical, and inspiring itinerary. Do not invent information.
+    You are an expert travel planner. Use the provided REAL-WORLD DATA. Do not invent info.
 
-    ---
-    USER PREFERENCES:
+    --- USER PREFERENCES ---
     - From: ${from}
     - Destination: ${destination}
     - Dates: ${startDate} to ${endDate}
@@ -258,34 +241,35 @@ export async function POST(request) {
     - Preferred Transport: ${transportMode}
     - Interests: ${interests.join(', ')}
 
-    ---
-    REAL-WORLD DATA:
-    1.  Travel Options (from TomTom & Search):
-        - Distance: ${travelData.distance}
-        - Options: ${JSON.stringify(travelData.options)}
-    2.  Destination Info (from Google Search):
-        - Top Highlights: ${destinationInfo.highlights.join(', ') || 'N/A'}
-        - Best Time to Visit: ${destinationInfo.bestTime}
-        - Suggested ${budget} Hotels: ${JSON.stringify(destinationInfo.hotels)}
+    --- REAL-WORLD DATA ---
+    1. Travel Options:
+       - Distance: ${travelData.distance}
+       - Options: ${JSON.stringify(travelData.options)}
+    2. Destination Info:
+       - Top Highlights: ${destinationInfo.highlights.join(', ') || 'N/A'}
+       - Best Time to Visit: ${destinationInfo.bestTime}
+       - Suggested ${budget} Hotels: ${JSON.stringify(destinationInfo.hotels)}
+    3. Coordinates:
+       - Origin (${from}): ${JSON.stringify(fromCoords)}
+       - Destination (${destination}): ${JSON.stringify(destCoords)}
 
-    ---
-    YOUR TASK:
-    1.  Create a "travelAnalysis" block. Use the "Travel Options" data directly.
-    2.  Create a "destinationSummary" block. Pass the "bestTimeToVisit" and "hotelSuggestions" data through directly.
-    3.  Create a "thoughtProcess" block.
-    4.  Create a complete day-by-day "days" array, from ${startDate} to ${endDate}.
-    5.  For each day, include all 3 parts: "Morning", "Afternoon", and "Evening".
-    6.  For each activity, add a 1-2 sentence "description" explaining what it is or 
-        why it fits the user's interests.
-    7.  Weave the "Top Highlights" into your plan.
+    --- YOUR TASK ---
+    1. Create "travelAnalysis". Use "Travel Options" data.
+    2. Create "destinationSummary". Pass "bestTimeToVisit" and "hotelSuggestions" data.
+    3. Create "thoughtProcess".
+    4. Create complete "days" array for ${startDate} to ${endDate}. Include Morning, Afternoon, Evening.
+    5. Add 1-2 sentence "description" for each activity explaining relevance.
+    6. Weave in "Top Highlights".
 
-    ---
-    JSON-ONLY RESPONSE:
-    Respond ONLY with a valid JSON object. Do not include any text before or after it.
+    --- JSON-ONLY RESPONSE ---
+    Respond ONLY with a valid JSON object. No text before or after.
     {
       "destinationName": "${destination}",
+      "fromName": "${from}", // <-- Added for clarity on globe
+      "fromCoords": ${JSON.stringify(fromCoords)}, // <-- Added coords
+      "destinationCoords": ${JSON.stringify(destCoords)}, // <-- Added coords
       "travelAnalysis": {
-        "summary": "Based on real data, here are the travel options from ${from} to ${destination}:",
+        "summary": "Based on real data, here are the travel options...",
         "distance": "${travelData.distance}",
         "options": ${JSON.stringify(travelData.options)}
       },
@@ -293,38 +277,30 @@ export async function POST(request) {
         "bestTimeToVisit": "${destinationInfo.bestTime}",
         "hotelSuggestions": ${JSON.stringify(destinationInfo.hotels)}
       },
-      "thoughtProcess": "I've used the real travel times and top sights to build a logical plan...",
+      "thoughtProcess": "I used real travel times and sights...",
       "days": [
         {
-          "day": 1,
-          "date": "${startDate}",
-          "title": "Travel and Arrival",
+          "day": 1, "date": "${startDate}", "title": "Travel and Arrival",
           "activities": [
-            { "time": "Morning", "description": "Travel from ${from} to ${destination} via [Logical Mode from data]." },
-            { "time": "Afternoon", "description": "Arrive and transfer to your hotel. We suggest checking into ${destinationInfo.hotels.length > 0 ? destinationInfo.hotels[0].name : `a ${budget} hotel`}." },
-            { "time": "Evening", "description": "Settle in and have a relaxing ${budget} dinner at a nearby restaurant." }
+            { "time": "Morning/Afternoon", "description": "Travel from ${from} to ${destination} via [Logical Mode from data]. Estimated time: [Time from data]." },
+            { "time": "Evening", "description": "Arrive in ${destination}, check into hotel (Suggestion: ${destinationInfo.hotels.length > 0 ? destinationInfo.hotels[0].name : `a ${budget} hotel`}) and have dinner." }
           ]
         },
-        {
-          "day": 2,
-          "date": "[Date for Day 2]",
-          "title": "[Title based on interests, e.g., 'Historical Exploration']",
-          "activities": [
-            { "time": "Morning", "description": "Visit [Top Highlight 1]. This is famous for..." },
-            { "time": "Afternoon", "description": "Explore [Top Highlight 2]. This fits your interest in [Interest]." },
-            { "time": "Evening", "description": "Experience [Local activity, e.g., a local market]." }
-          ]
-        }
         // ... (etc. for all days)
+        {
+          "day": 2, "date": "[Date Day 2]", "title": "[Title Day 2]",
+          "activities": [ { "time": "Morning", "description":"..." }, { "time": "Afternoon", "description":"..." }, {"time": "Evening", "description":"..."} ]
+        }
       ]
     }
   `;
 
+  // --- Call AI and Stream ---
   try {
     const responseStream = await ollama.chat({
       model: 'llama3',
       messages: [{ role: 'user', content: prompt }],
-      stream: true, 
+      stream: true,
     });
 
     const readableStream = ollamaStreamToReadableStream(responseStream);

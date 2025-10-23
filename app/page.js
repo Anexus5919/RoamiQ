@@ -1,19 +1,20 @@
 // /app/page.js
 'use client';
 
-// Removed useState, using context hook instead
-import { Suspense } from 'react';
+import { Suspense, useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import ItineraryForm from './components/ItineraryForm';
 import ItineraryDisplay from './components/ItineraryDisplay';
 import WeatherDisplay from './components/WeatherDisplay';
 import TravelAnalysisDisplay from './components/TravelAnalysisDisplay';
 import HotelSuggestions from './components/HotelSuggestions';
 import ChainOfThoughtDisplay from './components/ChainOfThoughtDisplay';
-// Import the custom hook to use the shared itinerary state
-import { useItinerary } from './context/ItineraryContext'; // Verify path if needed
+import GlobeDisplay from './components/GlobeDisplay';
+import { useItinerary } from './context/ItineraryContext'; // Uses context
 
-// Helper function to extract JSON (keep as is)
+// Helper function to extract JSON
 function extractJson(text) {
+  if (!text) return null;
   const firstBrace = text.indexOf('{');
   const lastBrace = text.lastIndexOf('}');
   if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
@@ -22,7 +23,7 @@ function extractJson(text) {
   return text.substring(firstBrace, lastBrace + 1);
 }
 
-// Initial CoT steps definition (keep as is)
+// Initial CoT steps definition
 const initialCotSteps = [
   { id: 'travel', text: 'Analyzing travel logistics...', status: 'pending' },
   { id: 'dest', text: 'Gathering destination info (hotels, best time)...', status: 'pending' },
@@ -31,7 +32,6 @@ const initialCotSteps = [
 
 // Main component using the context
 function ItineraryBuilder() {
-  // Get all state variables and setters from the global context
   const {
     itinerary, setItinerary,
     isLoading, setIsLoading,
@@ -40,23 +40,43 @@ function ItineraryBuilder() {
     cotSteps, setCotSteps
   } = useItinerary();
 
-  // handleFormSubmit logic remains largely the same, but uses setters from context
+  // Layout state: 'formOnly', 'loadingCentered', 'resultsSplit', 'errorCentered'
+  const [layoutState, setLayoutState] = useState('formOnly');
+
+  // Effect to reset layout
+  useEffect(() => {
+    if (!itinerary && !isLoading && !streamingText && !error && layoutState !== 'formOnly') {
+        setLayoutState('formOnly');
+    }
+    else if (!error && layoutState === 'errorCentered' && !isLoading) {
+         setLayoutState('formOnly');
+    }
+  }, [itinerary, isLoading, streamingText, error, layoutState]);
+
+  // handleFormSubmit logic
   const handleFormSubmit = async (formData) => {
     setIsLoading(true);
+    setLayoutState('loadingCentered');
     setError(null);
-    setItinerary(null); // Clear context state
-    setStreamingText(''); // Clear context state
-    setCotSteps(initialCotSteps); // Reset context state
+    setItinerary(null);
+    setStreamingText('');
+    setCotSteps(initialCotSteps);
 
     try {
       const response = await fetch('/api/itinerary', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'text/plain',
+        },
         body: JSON.stringify(formData),
       });
 
       if (!response.ok) {
-        const errData = await response.json(); throw new Error(errData.error || 'Something went wrong');
+        let errorPayload = { error: `HTTP error! status: ${response.status}` };
+        try { errorPayload = await response.json(); }
+        catch (e) { errorPayload.error = response.statusText || errorPayload.error; }
+        throw new Error(errorPayload.error || 'Something went wrong');
       }
       if (!response.body) { throw new Error('Response body is missing'); }
 
@@ -64,99 +84,153 @@ function ItineraryBuilder() {
       const decoder = new TextDecoder();
       let fullResponse = '';
 
+      // Streaming Logic
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
-          // Update context state
           setCotSteps(prevSteps => prevSteps.map(step => ({ ...step, status: 'done' })));
           break;
         }
         const chunk = decoder.decode(value, { stream: true });
         fullResponse += chunk;
-        setStreamingText(fullResponse); // Update context state
+        setStreamingText(fullResponse);
 
-        // Update context state based on stream progress
+        // Update CoT steps
         setCotSteps(prevSteps => {
-          const newSteps = JSON.parse(JSON.stringify(prevSteps));
-          if (fullResponse.includes('"travelAnalysis":')) { newSteps[0].status = 'loading'; }
-          if (fullResponse.includes('"destinationSummary":')) { newSteps[0].status = 'done'; newSteps[1].status = 'loading'; }
-          if (fullResponse.includes('"hotelSuggestions":')) { newSteps[1].text = 'Gathering destination info (found hotels!)'; }
-          if (fullResponse.includes('"days":')) { newSteps[1].status = 'done'; newSteps[2].status = 'loading'; }
-          const dayMatch = fullResponse.match(/"day": (\d+)/g);
-          if (dayMatch) {
-            const lastDay = dayMatch[dayMatch.length - 1];
-            const dayNum = lastDay.split(': ')[1];
-            newSteps[2].text = `Building your plan... (Day ${dayNum})`;
-          }
-          return newSteps;
+            const newSteps = JSON.parse(JSON.stringify(prevSteps));
+             if (fullResponse.includes('"travelAnalysis":')) { newSteps[0].status = 'loading'; }
+             if (fullResponse.includes('"destinationSummary":')) { newSteps[0].status = 'done'; newSteps[1].status = 'loading'; }
+             if (fullResponse.includes('"hotelSuggestions":')) { newSteps[1].text = 'Gathering destination info (found hotels!)'; }
+             if (fullResponse.includes('"days":')) { newSteps[1].status = 'done'; newSteps[2].status = 'loading'; }
+             const dayMatch = fullResponse.match(/"day":\s*(\d+)/g);
+             if (dayMatch) {
+               const lastDayMatch = dayMatch[dayMatch.length - 1];
+               const dayNumMatch = lastDayMatch.match(/\d+/);
+               if (dayNumMatch) {
+                   const dayNum = dayNumMatch[0];
+                   newSteps[2].text = `Building your plan... (Day ${dayNum})`;
+               }
+             }
+            return newSteps;
         });
-      }
+      } // End While
 
       const jsonString = extractJson(fullResponse);
       if (!jsonString) { throw new Error("Failed to find valid JSON in the AI's response."); }
 
       try {
         const finalJson = JSON.parse(jsonString);
-        setItinerary(finalJson); // Update context state
-        setStreamingText(''); // Update context state
+        setItinerary(finalJson);
+        setStreamingText('');
+        setLayoutState('resultsSplit'); // Success state
       } catch (parseError) {
-        console.error("JSON parsing error after extraction:", parseError);
-        setError("Failed to parse AI response..."); // Update context state
-        setStreamingText(fullResponse); // Update context state
+        console.error("JSON parsing error:", parseError);
+        setError("Failed to parse AI response, output might be malformed.");
+        setStreamingText(fullResponse);
+        setLayoutState('errorCentered'); // Error state
       }
     } catch (err) {
-      setError(err.message); // Update context state
+      console.error("Fetch/Submit Error:", err);
+      setError(err.message || "An unexpected error occurred during generation.");
+      setLayoutState('errorCentered'); // Error state
     } finally {
-      setIsLoading(false); // Update context state
+      setIsLoading(false); // Always stop loading indicator
     }
   };
 
-  // The JSX structure remains the same, but reads state from context
   return (
     <>
-      {/* Form Section */}
-      <div className="max-w-2xl mx-auto">
+      {/* Main Container */}
+      <div className={`mx-auto transition-all duration-700 ease-in-out ${layoutState === 'resultsSplit' ? 'max-w-full' : 'max-w-2xl'}`}>
+        {/* Title */}
         <h1 className="text-4xl md:text-5xl font-extrabold text-center text-indigo-700 dark:text-indigo-400 mb-8">
           Create Your Perfect Trip
         </h1>
-        {/* Pass isLoading from context */}
-        <ItineraryForm onSubmit={handleFormSubmit} isLoading={isLoading} />
-      </div>
 
-      {/* Loading/Streaming/Error Section - Reads from context */}
-      <div className="max-w-2xl mx-auto mt-6 space-y-6">
-        {isLoading && streamingText.length === 0 && (
-          <div className="flex justify-center items-center mt-6">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <p className="ml-3 text-gray-600 dark:text-gray-300">Starting the AI engine...</p>
-          </div>
-        )}
-        {streamingText.length > 0 && !itinerary && (
-          <ChainOfThoughtDisplay steps={cotSteps} rawJson={streamingText} />
-        )}
-        {error && (
-          <div className="bg-red-100 border-red-400 text-red-700 dark:bg-red-900/20 dark:border-red-600 dark:text-red-300 px-4 py-3 rounded-md mt-6" role="alert">
-            <strong className="font-bold">Error: </strong>
-            <span className="block sm:inline">{error}</span>
-          </div>
-        )}
-      </div>
+        {/* --- Layout Grid (Form + Optional Globe) --- */}
+        <div className={`grid grid-cols-1 ${layoutState === 'resultsSplit' ? 'lg:grid-cols-12 lg:gap-8 items-stretch' : ''}`}>
+          {/* Form Section */}
+          <motion.div
+            layout transition={{ duration: 0.7, ease: "easeInOut" }}
+            className={` ${layoutState === 'resultsSplit' ? 'lg:col-span-5' : 'col-span-1'} h-full flex flex-col min-h-0`}
+          >
+            <div className="flex-grow">
+                 <ItineraryForm onSubmit={handleFormSubmit} isLoading={isLoading} />
+            </div>
+          </motion.div>
 
-      {/* Final Results Section - Reads from context */}
-      {itinerary && (
-        <div className="max-w-7xl mx-auto mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-6">
-              <WeatherDisplay city={itinerary.destinationName} />
-              <TravelAnalysisDisplay analysis={itinerary.travelAnalysis} />
-              <ItineraryDisplay itinerary={itinerary} />
+          {/* --- Right Section (Globe OR CoT/Loading/Error) --- */}
+          {/* This section ONLY appears when not in 'formOnly' state */}
+          <AnimatePresence>
+            {layoutState !== 'formOnly' && (
+              <motion.div
+                className="lg:col-span-7 mt-6 lg:mt-0 h-full flex flex-col items-center justify-center min-h-0"
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+              >
+                {/* --- THIS IS THE FIX: Simplified Conditional Rendering --- */}
+                {/* Show Globe ONLY if results are ready */}
+                {layoutState === 'resultsSplit' && itinerary ? (
+                  <div className="w-full h-full">
+                    <GlobeDisplay
+                      fromCoords={itinerary.fromCoords} destinationCoords={itinerary.destinationCoords}
+                      fromName={itinerary.fromName} destinationName={itinerary.destinationName}
+                      distance={itinerary.travelAnalysis?.distance}
+                    />
+                  </div>
+                ) : (
+                  // Otherwise (loading or error), show the CoT/Loading/Error block
+                  <div className="w-full max-w-2xl space-y-6 px-4">
+                    {/* Initial Loading Spinner */}
+                    {isLoading && streamingText.length === 0 && !error && (
+                       <div className="flex justify-center items-center mt-6">
+                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                         <p className="ml-3 text-gray-600 dark:text-gray-300">Starting the AI engine...</p>
+                       </div>
+                    )}
+                    {/* CoT Display */}
+                    {streamingText.length > 0 && layoutState === 'loadingCentered' && (
+                      <ChainOfThoughtDisplay steps={cotSteps} rawJson={streamingText} />
+                    )}
+                     {/* Error Display */}
+                     {error && (
+                       <div className="bg-red-100 border-red-400 text-red-700 dark:bg-red-900/20 dark:border-red-600 dark:text-red-300 px-4 py-3 rounded-md" role="alert">
+                         <strong className="font-bold">Error: </strong>
+                         <span className="block sm:inline">{error}</span>
+                       </div>
+                     )}
+                  </div>
+                )}
+                {/* --- END FIX --- */}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div> {/* End Form/Globe Grid */}
+      </div> {/* End Main Container */}
+
+      {/* Loading/Streaming/Error Section (No longer needed here, moved inside right column) */}
+
+      {/* Final Results Section */}
+      <AnimatePresence>
+         {layoutState === 'resultsSplit' && itinerary && (
+           <motion.div
+            className="max-w-7xl mx-auto mt-8"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.5 }}
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-12 lg:gap-8 items-start">
+              <div className="lg:col-span-7 space-y-6">
+                 <WeatherDisplay city={itinerary.destinationName} />
+                 <TravelAnalysisDisplay analysis={itinerary.travelAnalysis} />
+                 <ItineraryDisplay itinerary={itinerary} />
+              </div>
+              <div className="lg:col-span-5 space-y-6">
+                 <HotelSuggestions hotels={itinerary.destinationSummary?.hotelSuggestions} />
+              </div>
             </div>
-            <div className="lg:col-span-1 space-y-6">
-              <HotelSuggestions hotels={itinerary.destinationSummary?.hotelSuggestions} />
-            </div>
-          </div>
-        </div>
-      )}
+          </motion.div>
+         )}
+      </AnimatePresence>
     </>
   );
 }

@@ -37,13 +37,13 @@ export default function ItineraryForm({ onSubmit, isLoading }) {
   };
 
   // --- ADDED DARK MODE STYLES to inputClass ---
-  const inputClass = "mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 placeholder-gray-400 dark:bg-gray-800 dark:text-gray-100";
+  const inputClass = "mt-4 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 placeholder-gray-400 dark:bg-gray-800 dark:text-gray-100";
 
   return (
     // --- ADDED DARK MODE STYLES to form ---
     <form 
       onSubmit={handleSubmit}
-      className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md space-y-6"
+      className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md space-y-7"
     >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
