@@ -4,29 +4,33 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { Sun, Moon } from 'lucide-react';
+import { Button } from './ui/button';
 
-export default function ThemeSwitcher() {
+export default function ThemeSwitcher({ isMainPage = false, iconColor = '' }) {
   const [mounted, setMounted] = useState(false);
   const { theme, setTheme } = useTheme();
 
-  // Wait until the component is mounted to show it
   useEffect(() => setMounted(true), []);
 
   if (!mounted) {
     return (
-      <button className="p-2 rounded-md" aria-label="Loading theme">
-        <div className="w-6 h-6 animate-pulse bg-gray-200 rounded-md"></div>
-      </button>
+      <Button variant="ghost" size="icon" disabled>
+        <div className="h-[1.2rem] w-[1.2rem] animate-pulse rounded-sm bg-muted"></div>
+      </Button>
     );
   }
 
   return (
-    <button
+    <Button
+      variant="ghost"
+      size="icon"
       onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-      className="p-2 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-      aria-label="Toggle dark mode"
+      aria-label="Toggle theme"
+      className="relative hover:bg-transparent"
     >
-      {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-    </button>
+      <Sun className={`h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0 ${iconColor}`} />
+      <Moon className={`absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100 ${iconColor}`} />
+      <span className="sr-only">Toggle theme</span>
+    </Button>
   );
 }

@@ -14,13 +14,18 @@ export default function GlobeDisplay({ fromCoords, destinationCoords, fromName, 
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const containerRef = useRef(); // Ref for the container div
 
+  // Check if we have valid coordinates
+  const hasValidCoords = fromCoords && destinationCoords && 
+                         fromCoords.lat != null && fromCoords.lon != null &&
+                         destinationCoords.lat != null && destinationCoords.lon != null;
+
   // --- COMPLETE: Data for points and arcs ---
-  const pointsData = [
+  const pointsData = hasValidCoords ? [
     { ...fromCoords, name: fromName, color: 'cyan', size: 0.5 },
     { ...destinationCoords, name: destinationName, color: 'red', size: 0.5 }
-  ];
+  ] : [];
 
-  const arcsData = [
+  const arcsData = hasValidCoords ? [
     {
       startLat: fromCoords.lat,
       startLng: fromCoords.lon,
@@ -30,7 +35,7 @@ export default function GlobeDisplay({ fromCoords, destinationCoords, fromName, 
       stroke: 0.3,
       name: `Route: ${distance || 'N/A'}` // Use distance from travelAnalysis
     }
-  ];
+  ] : [];
   // --- END ---
 
   // --- COMPLETE: Update dimensions effect ---
@@ -90,7 +95,7 @@ export default function GlobeDisplay({ fromCoords, destinationCoords, fromName, 
 
   return (
     // Container with fixes for height
-    <div ref={containerRef} className="relative w-full h-full rounded-lg overflow-hidden border dark:border-gray-700">
+    <div ref={containerRef} className="relative w-full h-full rounded-lg overflow-hidden border border-border shadow-lg bg-card">
       {/* Conditionally render Globe */}
       {dimensions.width > 0 && dimensions.height > 0 && (
         <Globe

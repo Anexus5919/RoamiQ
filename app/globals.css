@@ -1,41 +1,87 @@
 /* /app/globals.css */
 
-/* These MUST be first */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Default light theme - targets body directly */
-body {
-  @apply bg-gray-100 text-gray-900 transition-colors duration-100;
-}
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 214 85% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 214 85% 45%;
+    --chart-1: 214 85% 45%;
+    --chart-2: 170 60% 45%;
+    --chart-3: 45 80% 60%;
+    --chart-4: 260 70% 55%;
+    --chart-5: 340 70% 65%;
+    --sidebar: 210 40% 98%;
+    --sidebar-foreground: 240 10% 3.9%;
+    --sidebar-primary: 214 85% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 40% 96.1%;
+    --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+    --sidebar-border: 214.3 31.8% 91.4%;
+    --sidebar-ring: 214 85% 45%;
+    --radius: 0.5rem;
+  }
 
-/* --- THIS IS THE FIX --- */
-/* Target the body *when* the html tag has the dark class */
-html.dark body {
-  @apply bg-gray-900 text-gray-100 duration-100;
-}
-/* ----------------------- */
-
-/* Form input fixes */
-input, select {
-  @apply text-gray-900 placeholder-gray-400;
-  /* Apply dark styles when html has dark class */
-  html.dark & { 
-    @apply bg-gray-800 border-gray-600 text-gray-100;
+  .dark {
+    --background: 222.2 47.4% 11.2%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 47.4% 11.2%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 47.4% 11.2%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 214 85% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 214 85% 55%;
+    --chart-1: 214 85% 55%;
+    --chart-2: 170 60% 55%;
+    --chart-3: 45 80% 70%;
+    --chart-4: 260 70% 65%;
+    --chart-5: 340 70% 75%;
+    --sidebar: 222.2 47.4% 10%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 214 85% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217.2 32.6% 17.5%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217.2 32.6% 17.5%;
+    --sidebar-ring: 214 85% 55%;
   }
 }
-::placeholder {
-  @apply text-gray-400;
-  html.dark & {
-     @apply text-gray-500;
-  }
-}
 
-/* Date picker icon fix */
-input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(0);
-}
-html.dark input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1);
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }

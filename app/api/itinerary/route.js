@@ -249,6 +249,8 @@ export async function POST(request) {
 
     // --- Build the Prompt for the AI ---
     const prompt = `
+      CRITICAL: Your response must be PURE JSON only. Do NOT write any text like "Here is the itinerary" or any explanations before or after the JSON. Start immediately with { and end with }. Nothing else.
+      
       You are an expert travel planner. You MUST use the provided REAL-WORLD DATA to create a detailed, practical, and inspiring itinerary. Do not invent information.
 
       --- USER PREFERENCES ---
@@ -283,7 +285,14 @@ export async function POST(request) {
       8. Weave in "Top Highlights" naturally.
 
       --- JSON-ONLY RESPONSE ---
-      Respond ONLY with a valid JSON object. No text before or after. Ensure ALL string values are in double quotes (""). Check your final JSON for validity before outputting.
+      Respond ONLY with a valid JSON object. No text before or after the JSON. Do NOT include any comments in the JSON output. Ensure ALL string values are in double quotes (""). Check your final JSON for validity before outputting.
+      
+      CRITICAL RULES:
+      1. The JSON must NOT contain any comments like // or /* */
+      2. Pure JSON only - nothing before the opening { and nothing after the closing }
+      3. Do NOT add any explanations, notes, or text after the JSON ends
+      4. Your response should start with { and end with } - nothing else
+      
       {
         "destinationName": "${destination}",
         "fromName": "${from}",
@@ -291,41 +300,47 @@ export async function POST(request) {
         "destinationCoords": ${JSON.stringify(destCoords)},
         "travelAnalysis": {
           "summary": "Based on real data, here are the travel options...",
-          "distance": "${travelData.distance}", // String or Number
+          "distance": "${travelData.distance}",
           "options": ${JSON.stringify(travelData.options)}
         },
         "destinationSummary": {
-          "bestTimeToVisit": "${destinationInfo.bestTime}", // String
-          "hotelSuggestions": ${JSON.stringify(destinationInfo.hotels)} // Array
+          "bestTimeToVisit": "${destinationInfo.bestTime}",
+          "hotelSuggestions": ${JSON.stringify(destinationInfo.hotels)}
         },
-        "thoughtProcess": "...", // String
+        "thoughtProcess": "Comprehensive analysis of the travel requirements and itinerary planning considerations",
         "days": [
-          // START: Generate EXACTLY ${numberOfDays} day objects below.
           {
-            "day": 1, // Number
-            "date": "${calculatedDays > 0 ? allDates[0] : startDate}", // String: YYYY-MM-DD Use calculated date
-            "title": "Travel and Arrival", // String
-            "activities": [ // Array of objects
+            "day": 1,
+            "date": "${calculatedDays > 0 ? allDates[0] : startDate}",
+            "title": "Travel and Arrival",
+            "activities": [
               { "time": "Morning/Afternoon", "description": "Travel from ${from} to ${destination} via [Logical Mode from data]. Estimated time: [Time string]." },
               { "time": "Evening", "description": "Arrive in ${destination}, check into hotel (Suggestion: ${destinationInfo.hotels.length > 0 ? destinationInfo.hotels[0].name : `a ${budget} hotel`}) and have dinner." }
             ]
           },
-          // CONTINUE generating Day 2, Day 3, ..., Day ${calculatedDays > 0 ? calculatedDays : '?'} here.
-          // Example for Day 2:
           {
-             "day": 2, // Number
-             "date": "${calculatedDays > 1 ? allDates[1] : '[Calculate YYYY-MM-DD for Day 2]'}", // String: YYYY-MM-DD Use calculated date
-             "title": "[Title for Day 2]", // String
-             "activities": [ // Array of objects
-               { "time": "Morning", "description":"..." },
-               { "time": "Afternoon", "description":"..." },
-               { "time": "Evening", "description":"..." }
+             "day": 2,
+             "date": "${calculatedDays > 1 ? allDates[1] : '[Calculate YYYY-MM-DD for Day 2]'}",
+             "title": "Exploring ${destination}",
+             "activities": [
+               { "time": "Morning", "description": "Visit [specific attraction from Top Highlights]. Detailed description of why this fits the ${interests.join(', ')} interests." },
+               { "time": "Afternoon", "description": "Explore [another attraction]. Full description of activities and relevance to traveler interests." },
+               { "time": "Evening", "description": "Dinner at local restaurant and evening activity. Complete details about the experience." }
              ]
            }
-          // ... generate ALL remaining days up to the end date ...
-          // END: Ensure exactly ${numberOfDays} day objects were generated.
         ]
       }
+      
+      IMPORTANT INSTRUCTIONS FOR DAYS ARRAY:
+      - Generate EXACTLY ${numberOfDays} day objects (Day 1 through Day ${calculatedDays > 0 ? calculatedDays : 'N'})
+      - Use the exact dates from 'Specific Dates To Plan For' data for each day's "date" field
+      - Each day MUST have 3 activities: Morning, Afternoon, and Evening
+      - NEVER use "..." or placeholder text - write full, detailed descriptions for EVERY activity
+      - Each activity description must be 2-3 complete sentences explaining what to do and why it matches the traveler's interests
+      - Incorporate the Top Highlights naturally across different days
+      - Continue generating ALL days until you reach ${endDate} - do not stop early
+      
+      FINAL REMINDER: Output ONLY the JSON object. Do NOT add any text, explanations, or commentary before { or after }. Your entire response must be valid JSON that can be parsed directly.
     `;
     // --- **** END OF PROMPT FIX **** ---
 
@@ -333,7 +348,7 @@ export async function POST(request) {
     // --- Call AI and Stream ---
     try {
       const responseStream = await ollama.chat({
-        model: 'llama3',
+        model: 'llama3:latest',
         messages: [{ role: 'user', content: prompt }],
         stream: true,
       });
