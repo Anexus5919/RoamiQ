@@ -65,7 +65,7 @@ function LandingPage() {
                   onClick={() => window.location.href = '/suggestions'}
                 >
                   <Sparkles className="mr-2 h-4 w-4" />
-                  I'm Feeling Lucky
+                  I&apos;m Feeling Lucky
                 </Button>
               </div>
             </div>
