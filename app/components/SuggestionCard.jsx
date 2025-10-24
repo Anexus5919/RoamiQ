@@ -1,6 +1,8 @@
 // /app/components/SuggestionCard.jsx
 import Image from 'next/image';
 import Link from 'next/link';
+import { Calendar, Sparkles } from 'lucide-react';
+import { Card, CardContent } from './ui/card';
 
 export default function SuggestionCard({ suggestion }) {
   const { destination, imageUrl, highlights, bestTimeToVisit } = suggestion;
@@ -11,39 +13,47 @@ export default function SuggestionCard({ suggestion }) {
         pathname: '/',
         query: { destination: destination }
       }}
-      // --- THIS IS THE FIX ---
-      // Apply shadow-lg by default (light mode)
-      // In dark mode, use shadow-sm (smaller) and a very light, almost transparent gray shadow color.
-      className="bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-md dark:shadow-gray-700/30 overflow-hidden transition-transform duration-300 hover:scale-105 block"
+      className="block group"
     >
-      <div className="relative h-48 w-full">
-        <Image
-          src={imageUrl}
-          alt={`View of ${destination}`}
-          layout="fill"
-          objectFit="cover"
-          unoptimized={true}
-        />
-      </div>
-      <div className="p-4">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">{destination}</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          <strong>Best time to visit:</strong> {bestTimeToVisit}
-        </p>
-        <div className="mt-2">
-          <h4 className="font-semibold text-gray-700 dark:text-gray-300">Highlights:</h4>
-          <ul className="list-disc list-inside pl-2 mt-1 space-y-0.5">
-            {highlights.map((highlight, index) => (
-              <li key={index} className="text-sm text-gray-600 dark:text-gray-400">{highlight}</li>
-            ))}
-          </ul>
+      <Card className="overflow-hidden transition-shadow duration-300 hover:shadow-xl h-full flex flex-col">
+        <div className="relative h-48 w-full overflow-hidden">
+          <Image
+            src={imageUrl}
+            alt={`View of ${destination}`}
+            fill
+            className="object-cover transition-transform duration-300 group-hover:scale-110"
+            unoptimized={true}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+          <div className="absolute bottom-3 left-3 right-3">
+            <h3 className="text-2xl font-bold text-white drop-shadow-lg">{destination}</h3>
+          </div>
         </div>
-        <div className="text-center mt-4">
-          <span className="inline-block w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-            View Plan
-          </span>
-        </div>
-      </div>
+        
+        <CardContent className="flex-1 p-4 space-y-3">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="font-medium">Best time to visit</span>
+            </div>
+            <p className="text-sm pl-5 leading-relaxed">{bestTimeToVisit}</p>
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <h4 className="font-semibold text-sm">Highlights</h4>
+            </div>
+            <ul className="space-y-1 pl-6">
+              {highlights.map((highlight, index) => (
+                <li key={index} className="text-sm text-muted-foreground list-disc">
+                  {highlight}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
     </Link>
   );
 }

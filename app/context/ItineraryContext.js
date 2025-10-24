@@ -13,6 +13,7 @@ export function ItineraryProvider({ children }) {
   const [error, setError] = useState(null);
   const [streamingText, setStreamingText] = useState('');
   const [cotSteps, setCotSteps] = useState([]); // Initialize cotSteps here
+  const [formData, setFormData] = useState(null); // Store form data for navigation
 
   // You can also move the handleFormSubmit logic here if preferred,
   // or keep it in page.js and pass the setters down.
@@ -23,7 +24,8 @@ export function ItineraryProvider({ children }) {
     isLoading, setIsLoading,
     error, setError,
     streamingText, setStreamingText,
-    cotSteps, setCotSteps
+    cotSteps, setCotSteps,
+    formData, setFormData
   };
 
   return (
